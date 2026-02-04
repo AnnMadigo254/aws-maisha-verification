@@ -1,0 +1,14 @@
+2026-02-04 17:47:35,977 - INFO - Sample images will be saved to: sample_images_20260204_174735
+2026-02-04 17:47:35,989 - INFO - ======================================================================
+2026-02-04 17:47:35,989 - INFO - MAISHA CARD VERIFICATION TEST - WITH CORRECTED MAPPING
+2026-02-04 17:47:35,989 - INFO - ======================================================================
+2026-02-04 17:47:35,989 - INFO - API Endpoint: https://18.235.35.175
+2026-02-04 17:47:35,989 - INFO - Batch Size: 5
+2026-02-04 17:47:35,989 - INFO - Limit: 20
+2026-02-04 17:47:35,989 - INFO - FIX: Swapping AWS_IMAGE→face and ID_PHOTO→card
+2026-02-04 17:47:35,990 - INFO - Save Images: Yes (first 5 records)
+2026-02-04 17:47:35,990 - INFO - ======================================================================
+
+2026-02-04 17:47:35,990 - INFO - Connecting to Oracle database...
+2026-02-04 17:47:36,049 - ERROR - ❌ Database error: DPY-6005: cannot connect to database (CONNECTION_ID=b1erMvzNoPBsRDI1XHQoUg==).
+[Errno 61] Connection refused
