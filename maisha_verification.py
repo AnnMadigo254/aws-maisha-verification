@@ -1146,8 +1146,8 @@ def main():
     # Choose your test scenario:
     
     # Scenario 1: Quick validation (5 records)
-    batch_size = 5
-    total_limit = 5
+    # batch_size = 5
+    # total_limit = 5
     
     # Scenario 2: Small test (20 records)
     # batch_size = 5
@@ -1158,8 +1158,8 @@ def main():
     # total_limit = 100
     
     # Scenario 4: Full test (120 records - as per your query)
-    # batch_size = 10
-    # total_limit = 120
+    batch_size = 10
+    total_limit = 120
     
     # Scenario 5: All available records
     # batch_size = 20
