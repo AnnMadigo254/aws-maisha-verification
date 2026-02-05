@@ -1,0 +1,13 @@
+2026-02-05 12:59:32,736 - INFO - ======================================================================
+2026-02-05 12:59:32,737 - INFO - MAISHA CARD VERIFICATION TEST - OPTIMIZED QUERY
+2026-02-05 12:59:32,737 - INFO - ======================================================================
+2026-02-05 12:59:32,737 - INFO - Database: copkdresb-scan:1561/MONAPREPROD
+2026-02-05 12:59:32,737 - INFO - API Endpoint: https://18.235.35.175
+2026-02-05 12:59:32,737 - INFO - Batch Size: 10
+2026-02-05 12:59:32,737 - INFO - Limit: 120
+2026-02-05 12:59:32,737 - INFO - Using: blob_to_clob conversion (already base64)
+2026-02-05 12:59:32,737 - INFO - ======================================================================
+
+2026-02-05 12:59:32,737 - INFO - Verifying Maisha data availability...
+2026-02-05 12:59:32,781 - ERROR - ❌ Data verification failed: [Errno 8] nodename nor servname provided, or not known
+2026-02-05 12:59:32,781 - ERROR - ❌ Test execution failed: [Errno 8] nodename nor servname provided, or not known
