@@ -129,3 +129,111 @@ site/
 test_local.py
 scratch.py
 debug_*.py
+
+# Byte-compiled / optimized / DLL / Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Maisha verification outputs
+maisha_verification_*.log
+maisha_results_*.csv
+maisha_gbg_comparison_*.csv
+maisha_skipped_*.csv
+executive_summary_*.txt
+
+# Disagreement images - DO NOT COMMIT TO GIT
+disagreement_images_*/
+verification_images_*/
+
+# Compressed archives
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.rar
+
+# Database credentials (if any config files)
+config.json
+credentials.json
+secrets.json
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints/
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Node modules (if you have any JS tools)
+node_modules/
+package-lock.json
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+
+
+
