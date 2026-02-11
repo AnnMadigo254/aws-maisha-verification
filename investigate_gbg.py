@@ -1,13 +1,11 @@
 """
-investigate_gbg_threshold.py
-----------------------------
-Find where GBG stores its face match score and threshold in the database.
-
-We know:
-  - SELF_ONBOARDING_TRACKER_KYC.HIGH_LEVEL_RESULT = GBG's final verdict ('Passed')
-  - SELF_ONBOARDING_TRACKER_MAIN.JOURNEY_ID        = GBG's journey reference ID
-
-Goal: Find the numeric face match score GBG used to arrive at 'Passed'.
+investigate_gbg_threshold_3.py
+--------------------------------
+The OCR tracker has 222,774 records but doesn't join on SESSION_ID to KYC.
+Goal:
+  1. Find the correct join key between OCR tracker and KYC/MAIN tables
+  2. Read RAW_RESPONSE CLOB - it likely contains the full GBG JSON with face score
+  3. Find GBG's numeric face match score and threshold
 """
 
 import oracledb
@@ -19,21 +17,20 @@ oracle_config = {
     'dsn':      'copkdresb-scan:1561/MONAPREPROD'
 }
 
-def run(sql, label="", params=None):
+def run(sql, label=""):
     conn = oracledb.connect(**oracle_config)
     cur  = conn.cursor()
     try:
         print(f"\n{'='*70}")
         print(f"QUERY: {label}")
         print(f"{'='*70}")
-        cur.execute(sql, params or [])
+        cur.execute(sql)
         cols = [d[0] for d in cur.description]
         rows = cur.fetchall()
         print(f"Columns: {cols}")
-        print(f"Rows:    {len(rows)}")
-        if rows:
-            for row in rows[:20]:
-                print(dict(zip(cols, row)))
+        print(f"Rows: {len(rows)}")
+        for row in rows[:20]:
+            print(dict(zip(cols, row)))
         return rows, cols
     except Exception as e:
         print(f"ERROR: {e}")
@@ -43,202 +40,173 @@ def run(sql, label="", params=None):
         conn.close()
 
 
-def run_raw(sql, label=""):
-    conn = oracledb.connect(**oracle_config)
-    cur  = conn.cursor()
-    try:
-        print(f"\n{'='*70}")
-        print(f"QUERY: {label}")
-        print(f"{'='*70}")
-        cur.execute(sql)
-        rows = cur.fetchall()
-        for row in rows[:30]:
-            print(row)
-        return rows
-    except Exception as e:
-        print(f"ERROR: {e}")
-        return []
-    finally:
-        cur.close()
-        conn.close()
+# ============================================================
+# 1. What does the OCR tracker's ID column look like?
+#    Is it a UUID? Does it match JOURNEY_ID in MAIN?
+# ============================================================
+run("""
+    SELECT ID, DEVICE_ID, SESSION_ID, STATUS,
+           CONFIDENCE_SCORE, LIVELINESS_CONFIDENCE_SCORE
+    FROM MA.SELF_ONBOARDING_TRACKER_OCR
+    WHERE ROWNUM <= 10
+    ORDER BY DATE_CREATED DESC
+""", "OCR tracker - raw sample rows (check ID format)")
 
 
 # ============================================================
-# 1. What columns does SELF_ONBOARDING_TRACKER_KYC have?
-#    Looking for: score, confidence, face, match, similarity, threshold, gbg
+# 2. Does OCR.ID match MAIN.JOURNEY_ID?
+#    MAIN.JOURNEY_ID is the GBG journey reference
 # ============================================================
-run_raw("""
-    SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH
-    FROM ALL_TAB_COLUMNS
-    WHERE TABLE_NAME = 'SELF_ONBOARDING_TRACKER_KYC'
-      AND OWNER = 'MA'
-    ORDER BY COLUMN_ID
-""", "KYC table - ALL columns")
-
-
-# ============================================================
-# 2. What other GBG-related tables exist in schema MA?
-#    GBG typically stores detailed response in a separate table
-# ============================================================
-run_raw("""
-    SELECT TABLE_NAME
-    FROM ALL_TABLES
-    WHERE OWNER = 'MA'
-      AND (
-           UPPER(TABLE_NAME) LIKE '%GBG%'
-        OR UPPER(TABLE_NAME) LIKE '%JOURNEY%'
-        OR UPPER(TABLE_NAME) LIKE '%BIOMETRIC%'
-        OR UPPER(TABLE_NAME) LIKE '%FACE%'
-        OR UPPER(TABLE_NAME) LIKE '%LIVENESS%'
-        OR UPPER(TABLE_NAME) LIKE '%IDENTITY%'
-        OR UPPER(TABLE_NAME) LIKE '%VERIFICATION%'
-        OR UPPER(TABLE_NAME) LIKE '%KYC%'
-        OR UPPER(TABLE_NAME) LIKE '%ONBOARD%'
-      )
-    ORDER BY TABLE_NAME
-""", "Tables with GBG/journey/face/biometric in name")
+run("""
+    SELECT COUNT(*) AS matches
+    FROM MA.SELF_ONBOARDING_TRACKER_OCR o
+    JOIN MA.SELF_ONBOARDING_TRACKER_MAIN sm
+        ON sm.JOURNEY_ID = o.ID
+    WHERE sm.LIVELINESS_CHECK = 1
+""", "OCR.ID joins to MAIN.JOURNEY_ID? (count matches)")
 
 
 # ============================================================
-# 3. Look at the full KYC record for a known GBG-passed session
-#    to see all populated fields
+# 3. Does OCR.SESSION_ID match MAIN.ID?
 # ============================================================
-run_raw("""
-    SELECT k.*, sm.JOURNEY_ID, sm.IS_GBG_JOURNEY_ID_CAPTURED
-    FROM MA.SELF_ONBOARDING_TRACKER_KYC k
-    JOIN MA.SELF_ONBOARDING_TRACKER_MAIN sm ON sm.ID = k.SESSION_ID
-    WHERE k.HIGH_LEVEL_RESULT = 'Passed'
-      AND sm.LIVELINESS_CHECK = 1
-      AND ROWNUM <= 3
-""", "Full KYC row for a GBG-passed record")
+run("""
+    SELECT COUNT(*) AS matches
+    FROM MA.SELF_ONBOARDING_TRACKER_OCR o
+    JOIN MA.SELF_ONBOARDING_TRACKER_MAIN sm
+        ON sm.ID = o.SESSION_ID
+    WHERE sm.LIVELINESS_CHECK = 1
+""", "OCR.SESSION_ID joins to MAIN.ID? (count matches)")
 
 
 # ============================================================
-# 4. Are there any VARCHAR/CLOB columns in the KYC table
-#    that might hold raw GBG JSON response?
+# 4. Does OCR.ID match MAIN.ID directly?
 # ============================================================
-run_raw("""
-    SELECT COLUMN_NAME, DATA_TYPE
-    FROM ALL_TAB_COLUMNS
-    WHERE TABLE_NAME = 'SELF_ONBOARDING_TRACKER_KYC'
-      AND OWNER = 'MA'
-      AND DATA_TYPE IN ('CLOB', 'VARCHAR2', 'NVARCHAR2', 'XMLTYPE')
-    ORDER BY COLUMN_ID
-""", "KYC table - CLOB/VARCHAR columns (may hold raw GBG response)")
+run("""
+    SELECT COUNT(*) AS matches
+    FROM MA.SELF_ONBOARDING_TRACKER_OCR o
+    JOIN MA.SELF_ONBOARDING_TRACKER_MAIN sm
+        ON sm.ID = o.ID
+    WHERE sm.LIVELINESS_CHECK = 1
+""", "OCR.ID joins to MAIN.ID? (count matches)")
 
 
 # ============================================================
-# 5. Check if SELF_ONBOARDING_TRACKER_MAIN has any score fields
+# 5. Does OCR.DEVICE_ID match MAIN.DEVICE_ID?
 # ============================================================
-run_raw("""
-    SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH
-    FROM ALL_TAB_COLUMNS
-    WHERE TABLE_NAME = 'SELF_ONBOARDING_TRACKER_MAIN'
-      AND OWNER = 'MA'
-    ORDER BY COLUMN_ID
-""", "MAIN table - ALL columns")
-
-
-# ============================================================
-# 6. Check all OTHER SELF_ONBOARDING_TRACKER_* tables in the schema
-# ============================================================
-run_raw("""
-    SELECT TABLE_NAME
-    FROM ALL_TABLES
-    WHERE OWNER = 'MA'
-      AND TABLE_NAME LIKE 'SELF_ONBOARDING_TRACKER%'
-    ORDER BY TABLE_NAME
-""", "All SELF_ONBOARDING_TRACKER_* tables")
+run("""
+    SELECT COUNT(*) AS matches
+    FROM MA.SELF_ONBOARDING_TRACKER_OCR o
+    JOIN MA.SELF_ONBOARDING_TRACKER_MAIN sm
+        ON sm.DEVICE_ID = o.DEVICE_ID
+    WHERE sm.LIVELINESS_CHECK = 1
+""", "OCR.DEVICE_ID joins to MAIN.DEVICE_ID? (count matches)")
 
 
 # ============================================================
-# 7. For each sibling tracker table, show its columns
-#    so we can spot score/threshold/face fields
+# 6. Peek at MAIN.JOURNEY_ID to compare format with OCR.ID
 # ============================================================
-conn = oracledb.connect(**oracle_config)
-cur  = conn.cursor()
-cur.execute("""
-    SELECT TABLE_NAME FROM ALL_TABLES
-    WHERE OWNER = 'MA'
-      AND TABLE_NAME LIKE 'SELF_ONBOARDING_TRACKER%'
-    ORDER BY TABLE_NAME
-""")
-tracker_tables = [r[0] for r in cur.fetchall()]
-cur.close()
-conn.close()
-
-for tbl in tracker_tables:
-    run_raw(f"""
-        SELECT COLUMN_NAME, DATA_TYPE
-        FROM ALL_TAB_COLUMNS
-        WHERE TABLE_NAME = '{tbl}'
-          AND OWNER = 'MA'
-          AND (
-               UPPER(COLUMN_NAME) LIKE '%SCORE%'
-            OR UPPER(COLUMN_NAME) LIKE '%CONF%'
-            OR UPPER(COLUMN_NAME) LIKE '%FACE%'
-            OR UPPER(COLUMN_NAME) LIKE '%MATCH%'
-            OR UPPER(COLUMN_NAME) LIKE '%THRESH%'
-            OR UPPER(COLUMN_NAME) LIKE '%SIMILAR%'
-            OR UPPER(COLUMN_NAME) LIKE '%GBG%'
-            OR UPPER(COLUMN_NAME) LIKE '%BIOM%'
-            OR UPPER(COLUMN_NAME) LIKE '%IDENT%'
-            OR UPPER(COLUMN_NAME) LIKE '%RESULT%'
-            OR UPPER(COLUMN_NAME) LIKE '%STATUS%'
-            OR UPPER(COLUMN_NAME) LIKE '%LIVE%'
-          )
-        ORDER BY COLUMN_ID
-    """, f"{tbl} — score/face/threshold columns")
+run("""
+    SELECT ID, JOURNEY_ID, LIVELINESS_CHECK, IS_GBG_JOURNEY_ID_CAPTURED
+    FROM MA.SELF_ONBOARDING_TRACKER_MAIN
+    WHERE LIVELINESS_CHECK = 1
+      AND JOURNEY_ID IS NOT NULL
+    FETCH FIRST 10 ROWS ONLY
+""", "MAIN - sample JOURNEY_ID values (compare format to OCR.ID)")
 
 
 # ============================================================
-# 8. Check if HIGH_LEVEL_RESULT has other values besides 'Passed'
-#    and look for a numeric companion field (face score)
+# 7. Read RAW_RESPONSE CLOB from OCR tracker
+#    This likely contains the full GBG API JSON response
+#    including the face match score and threshold
 # ============================================================
-run_raw("""
-    SELECT HIGH_LEVEL_RESULT, COUNT(*) as CNT
-    FROM MA.SELF_ONBOARDING_TRACKER_KYC
-    GROUP BY HIGH_LEVEL_RESULT
-    ORDER BY CNT DESC
-""", "KYC - ALL HIGH_LEVEL_RESULT values")
+run("""
+    SELECT
+        o.ID,
+        o.SESSION_ID,
+        o.CONFIDENCE_SCORE,
+        o.LIVELINESS_CONFIDENCE_SCORE,
+        o.STATUS,
+        DBMS_LOB.SUBSTR(o.RAW_RESPONSE, 2000, 1) AS raw_response_preview
+    FROM MA.SELF_ONBOARDING_TRACKER_OCR o
+    WHERE o.RAW_RESPONSE IS NOT NULL
+      AND o.CONFIDENCE_SCORE IS NOT NULL
+    FETCH FIRST 5 ROWS ONLY
+""", "OCR RAW_RESPONSE CLOB preview - GBG JSON response with face score")
 
 
 # ============================================================
-# 9. GBG API responses often contain a CLOB with JSON.
-#    If any CLOB column exists, peek at first 500 chars
+# 8. Read RAW_RESPONSE for high confidence records
+#    (to see what a passing GBG response looks like)
 # ============================================================
-conn = oracledb.connect(**oracle_config)
-cur  = conn.cursor()
-cur.execute("""
-    SELECT COLUMN_NAME FROM ALL_TAB_COLUMNS
-    WHERE TABLE_NAME = 'SELF_ONBOARDING_TRACKER_KYC'
-      AND OWNER = 'MA'
-      AND DATA_TYPE = 'CLOB'
-""")
-clob_cols = [r[0] for r in cur.fetchall()]
-cur.close()
-conn.close()
+run("""
+    SELECT
+        o.CONFIDENCE_SCORE,
+        o.LIVELINESS_CONFIDENCE_SCORE,
+        o.STATUS,
+        DBMS_LOB.SUBSTR(o.RAW_RESPONSE, 3000, 1) AS raw_response_preview
+    FROM MA.SELF_ONBOARDING_TRACKER_OCR o
+    WHERE o.RAW_RESPONSE IS NOT NULL
+      AND o.CONFIDENCE_SCORE >= 80
+    FETCH FIRST 3 ROWS ONLY
+""", "OCR RAW_RESPONSE for HIGH confidence records (>= 80%)")
 
-for col in clob_cols:
-    if 'IMAGE' in col.upper() or 'PHOTO' in col.upper() or 'CAPTURE' in col.upper():
-        print(f"\nSkipping image CLOB column: {col}")
-        continue
-    run_raw(f"""
-        SELECT SUBSTR(DBMS_LOB.SUBSTR({col}, 1000, 1), 1, 1000) as PREVIEW
-        FROM MA.SELF_ONBOARDING_TRACKER_KYC
-        WHERE {col} IS NOT NULL
-          AND HIGH_LEVEL_RESULT = 'Passed'
-          AND ROWNUM <= 2
-    """, f"KYC.{col} — CLOB preview (looking for GBG face score JSON)")
+
+# ============================================================
+# 9. Read RAW_RESPONSE for LOW confidence records
+#    (to see what a failing GBG response looks like)
+# ============================================================
+run("""
+    SELECT
+        o.CONFIDENCE_SCORE,
+        o.LIVELINESS_CONFIDENCE_SCORE,
+        o.STATUS,
+        DBMS_LOB.SUBSTR(o.RAW_RESPONSE, 3000, 1) AS raw_response_preview
+    FROM MA.SELF_ONBOARDING_TRACKER_OCR o
+    WHERE o.RAW_RESPONSE IS NOT NULL
+      AND o.CONFIDENCE_SCORE < 70
+    FETCH FIRST 3 ROWS ONLY
+""", "OCR RAW_RESPONSE for LOW confidence records (< 70%)")
+
+
+# ============================================================
+# 10. Check what the AWS_IMAGE and ID_PHOTO BLOBs in OCR contain
+#     Are these the same images stored in KYC/AWS tables?
+# ============================================================
+run("""
+    SELECT
+        o.ID,
+        o.SESSION_ID,
+        CASE WHEN o.AWS_IMAGE IS NOT NULL
+             THEN DBMS_LOB.GETLENGTH(o.AWS_IMAGE) ELSE 0 END AS face_image_bytes,
+        CASE WHEN o.ID_PHOTO IS NOT NULL
+             THEN DBMS_LOB.GETLENGTH(o.ID_PHOTO) ELSE 0 END AS card_image_bytes,
+        o.CONFIDENCE_SCORE,
+        o.STATUS
+    FROM MA.SELF_ONBOARDING_TRACKER_OCR o
+    WHERE o.AWS_IMAGE IS NOT NULL
+       OR o.ID_PHOTO IS NOT NULL
+    FETCH FIRST 10 ROWS ONLY
+""", "OCR - image sizes (AWS_IMAGE = selfie, ID_PHOTO = card)")
+
+
+# ============================================================
+# 11. Verify: does the OCR tracker actually store GBG data
+#     or is it storing the OLD OCR/AWS pipeline data?
+#     Check date range of records
+# ============================================================
+run("""
+    SELECT
+        TO_CHAR(MIN(DATE_CREATED), 'YYYY-MM-DD') AS earliest,
+        TO_CHAR(MAX(DATE_CREATED), 'YYYY-MM-DD') AS latest,
+        COUNT(*) AS total_records,
+        COUNT(CASE WHEN CONFIDENCE_SCORE IS NOT NULL THEN 1 END) AS with_score,
+        COUNT(CASE WHEN RAW_RESPONSE IS NOT NULL THEN 1 END) AS with_raw_response,
+        COUNT(CASE WHEN AWS_IMAGE IS NOT NULL THEN 1 END) AS with_face_image,
+        COUNT(CASE WHEN ID_PHOTO IS NOT NULL THEN 1 END) AS with_card_image
+    FROM MA.SELF_ONBOARDING_TRACKER_OCR
+""", "OCR tracker - date range and data completeness")
 
 
 print("\n" + "="*70)
-print("INVESTIGATION COMPLETE")
+print("INVESTIGATION 3 COMPLETE")
 print("="*70)
-print("Review output above to identify:")
-print("  1. Which table/column stores GBG face match score")
-print("  2. Whether a raw GBG JSON response is stored")
-print("  3. What threshold GBG used for face matching")
-
-
-
